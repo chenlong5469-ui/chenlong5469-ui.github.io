@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>梦幻西游 · 收支账本</title>
+<style>
+  :root{
+    --bg:#0f1117; --card:#1a1d29; --card2:#222636; --border:#2e3344;
+    --text:#e6e8f0; --sub:#8b90a3; --exp:#ff6b6b; --inc:#4ade80;
+    --gold:#f5c542; --accent:#7c93ff; --danger:#ff5252;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:linear-gradient(180deg,#0f1117 0%,#14171f 100%);
+    color:var(--text); min-height:100vh; padding:20px; line-height:1.6;
+  }
+  .wrap{max-width:1000px;margin:0 auto}
+  header{text-align:center;padding:24px 16px 18px}
+  header h1{
+    font-size:30px; letter-spacing:2px; margin-bottom:8px;
+    background:linear-gradient(90deg,var(--gold),#fff3c4,var(--gold));
+    -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+  }
+  header .sub{color:var(--sub);font-size:13px}
+
+  /* 顶部工具条 */
+  .topbar{display:flex;justify-content:flex-end;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+  .btn{
+    background:var(--card); border:1px solid var(--border); color:var(--text);
+    padding:7px 14px; border-radius:8px; cursor:pointer; font-size:13px; transition:.15s;
+    display:inline-flex; align-items:center; gap:5px;
+  }
+  .btn:hover{background:var(--card2);border-color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{background:#6a7fee}
+  .btn.danger{color:var(--danger)}
+  .btn.sm{padding:5px 10px;font-size:12px}
+  .btn.warn{color:var(--gold)}
+
+  /* 汇总卡片 */
+  .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:18px 0}
+  .card{
+    background:var(--card); border:1px solid var(--border); border-radius:14px;
+    padding:18px; position:relative; overflow:hidden;
+  }
+  .card::before{content:"";position:absolute;top:0;left:0;width:4px;height:100%}
+  .card.exp::before{background:var(--exp)} .card.inc::before{background:var(--inc)}
+  .card.net::before{background:var(--gold)}
+  .card .label{color:var(--sub);font-size:13px;margin-bottom:8px}
+  .card .val{font-size:26px;font-weight:700}
+  .card.exp .val{color:var(--exp)} .card.inc .val{color:var(--inc)} .card.net .val{color:var(--gold)}
+  .card .val .yuan{font-size:14px;font-weight:400;margin-left:3px;opacity:.7}
+
+  /* 控制栏 */
+  .toolbar{display:flex;justify-content:space-between;align-items:center;margin:22px 0 12px;flex-wrap:wrap;gap:10px}
+  .toolbar h2{font-size:18px;font-weight:600}
+  .tabs{display:flex;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:3px}
+  .tabs button{
+    border:0;background:transparent;color:var(--sub);padding:7px 16px;border-radius:8px;
+    cursor:pointer;font-size:13px;transition:.2s
+  }
+  .tabs button.active{background:var(--accent);color:#fff}
+
+  /* 录入表单 */
+  .form-card{
+    background:var(--card); border:1px solid var(--border); border-radius:14px;
+    padding:16px; margin-bottom:16px; display:none;
+  }
+  .form-card.open{display:block}
+  .form-card h3{font-size:15px;margin-bottom:12px}
+  .form-row{display:grid;grid-template-columns:1.2fr 2fr 1fr 2fr auto;gap:10px;align-items:end}
+  .form-field label{display:block;font-size:12px;color:var(--sub);margin-bottom:5px}
+  input,select{
+    width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
+    padding:9px 11px;border-radius:8px;font-size:14px;font-family:inherit;
+  }
+  input:focus,select:focus{outline:none;border-color:var(--accent)}
+  .form-actions{display:flex;gap:8px}
+
+  /* 表格 */
+  .table-card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:12px 14px;text-align:left;font-size:14px;border-bottom:1px solid var(--border)}
+  th{background:var(--card2);color:var(--sub);font-weight:600;font-size:13px}
+  tr:last-child td{border-bottom:0}
+  tbody tr{transition:background .15s}
+  tbody tr:hover{background:var(--card2)}
+  td.amt{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+  .amt.exp{color:var(--exp)} .amt.inc{color:var(--inc)}
+  .cat-tag{display:inline-block;background:var(--card2);border:1px solid var(--border);padding:2px 9px;border-radius:6px;font-size:12px;color:var(--sub)}
+  .note-cell{color:var(--sub);font-size:13px}
+  .op-cell{white-space:nowrap;text-align:right}
+  .op-cell button{background:transparent;border:0;cursor:pointer;color:var(--sub);padding:4px 7px;border-radius:6px;font-size:13px}
+  .op-cell button:hover{background:var(--bg);color:var(--text)}
+  .op-cell button.del:hover{color:var(--danger)}
+  .op-cell button.edit:hover{color:var(--accent)}
+
+  /* 分组小计行 */
+  .group-row td{background:var(--card2);font-weight:600;color:var(--gold)}
+
+  footer{text-align:center;color:var(--sub);font-size:12px;margin-top:28px;padding:18px}
+  .empty{padding:40px;text-align:center;color:var(--sub)}
+  .hint{font-size:12px;color:var(--sub);margin-top:10px;text-align:center}
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:var(--accent);color:#fff;padding:10px 20px;border-radius:10px;font-size:14px;
+    opacity:0;transition:.3s;pointer-events:none;z-index:99;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media(max-width:680px){
+    .summary{grid-template-columns:1fr}
+    th,td{padding:10px 10px;font-size:13px}
+    .hide-sm{display:none}
+    .form-row{grid-template-columns:1fr 1fr;}
+    .form-actions{grid-column:1/-1}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>梦幻西游 · 收支账本</h1>
+    <div class="sub">角色账号 / 点卡 / 召唤兽 / 装备 全部花销与游戏内变现</div>
+  </header>
+
+  <div class="topbar">
+    <button class="btn sm" id="btnAdd">➕ 新增</button>
+    <button class="btn sm" id="btnExport">⬇ 导出备份</button>
+    <button class="btn sm" id="btnImport">⬆ 导入备份</button>
+    <input type="file" id="fileInput" accept=".json" style="display:none">
+    <button class="btn sm warn" id="btnReset">↺ 重置为初始数据</button>
+  </div>
+
+  <!-- 汇总 -->
+  <section class="summary">
+    <div class="card exp">
+      <div class="label">💰 游戏总支出</div>
+      <div class="val"><span id="tExp">0</span><span class="yuan">元</span></div>
+    </div>
+    <div class="card inc">
+      <div class="label">💵 游戏变现总收入</div>
+      <div class="val"><span id="tInc">0</span><span class="yuan">元</span></div>
+    </div>
+    <div class="card net">
+      <div class="label">📉 实际净投入</div>
+      <div class="val"><span id="tNet">0</span><span class="yuan">元</span></div>
+    </div>
+  </section>
+
+  <!-- 录入表单 -->
+  <div class="form-card" id="formCard">
+    <h3 id="formTitle">新增条目</h3>
+    <div class="form-row">
+      <div class="form-field">
+        <label>分类</label>
+        <input type="text" id="fCat" list="catList" placeholder="如：点卡相关">
+        <datalist id="catList"></datalist>
+      </div>
+      <div class="form-field">
+        <label>项目</label>
+        <input type="text" id="fItem" placeholder="如：30 元点卡">
+      </div>
+      <div class="form-field">
+        <label>金额 (元)</label>
+        <input type="number" id="fAmt" step="0.01" min="0" placeholder="0.00">
+      </div>
+      <div class="form-field">
+        <label>备注</label>
+        <input type="text" id="fNote" placeholder="选填">
+      </div>
+      <div class="form-actions">
+        <button class="btn primary" id="btnSave">保存</button>
+        <button class="btn" id="btnCancel">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 切换 -->
+  <div class="toolbar">
+    <h2 id="tableTitle">📋 支出明细</h2>
+    <div class="tabs">
+      <button class="active" data-type="expense">支出明细</button>
+      <button data-type="income">变现收入</button>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <table>
+      <thead>
+        <tr>
+          <th>分类</th><th>项目</th><th class="amt">金额</th>
+          <th class="hide-sm">备注</th><th class="op-cell">操作</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <div class="hint">💾 数据保存在浏览器本地 (localStorage)，清浏览器缓存会丢失，建议定期「导出备份」。</div>
+
+  <footer>
+    数据源自「梦幻西游收支明细.xlsx」 · 静态账本托管于 Gitee Pages
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="data.js"></script>
+<script>
+(function(){
+  "use strict";
+  var KEY = 'mh_ledger_v1';
+  var SEED = window.LEDGER_DATA || {expenses:[], incomes:[]};
+  var state = {current:'expense', editingId:null};
+
+  // ---- 存储 ----
+  function load(){
+    try{
+      var raw = localStorage.getItem(KEY);
+      if(raw){ return JSON.parse(raw); }
+    }catch(e){}
+    // 首次：用种子数据初始化并给每条加 id
+    var data = cloneSeed();
+    save(data);
+    return data;
+  }
+  function cloneSeed(){
+    var stamp = Date.now();
+    return {
+      expenses: SEED.expenses.map(function(r,i){ return withId(r, stamp+i); }),
+      incomes:  SEED.incomes.map(function(r,i){ return withId(r, stamp+i+10000); })
+    };
+  }
+  function withId(r, id){ return {id:id, category:r.category||'', item:r.item, amount:Number(r.amount)||0, note:r.note||''}; }
+  function save(data){ localStorage.setItem(KEY, JSON.stringify(data)); }
+  var data = load();
+
+  // ---- 工具 ----
+  function fmt(n){ return Number(n||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function genId(){ return Date.now()+Math.floor(Math.random()*1000); }
+  function toast(msg){
+    var t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+    clearTimeout(window.__tt); window.__tt=setTimeout(function(){t.classList.remove('show')},1600);
+  }
+  function group(list){
+    var map={}, order=[];
+    list.forEach(function(r){
+      var k=r.category||'其他';
+      if(!map[k]){map[k]={rows:[],sum:0};order.push(k);}
+      map[k].rows.push(r); map[k].sum+=Number(r.amount)||0;
+    });
+    return order.map(function(k){return {cat:k,rows:map[k].rows,sum:map[k].sum};});
+  }
+
+  // ---- 汇总 ----
+  function renderSummary(){
+    var e=sumAmt(data.expenses), i=sumAmt(data.incomes);
+    document.getElementById('tExp').textContent=fmt(e);
+    document.getElementById('tInc').textContent=fmt(i);
+    document.getElementById('tNet').textContent=fmt(e-i);
+  }
+  function sumAmt(list){ return list.reduce(function(s,r){return s+(Number(r.amount)||0)},0); }
+
+  // ---- 表格 ----
+  function render(){
+    var tbody=document.getElementById('tbody'); tbody.innerHTML='';
+    var list = state.current==='expense' ? data.expenses : data.incomes;
+    var cls = state.current==='expense' ? 'exp' : 'inc';
+    if(!list.length){ tbody.innerHTML='<tr><td colspan="5" class="empty">暂无数据，点「新增」录入</td></tr>'; return; }
+    group(list).forEach(function(g){
+      g.rows.forEach(function(r,idx){
+        var tr=document.createElement('tr');
+        var catCell = idx===0 ? '<span class="cat-tag">'+g.cat+'</span>' : '';
+        tr.innerHTML =
+          '<td>'+catCell+'</td>'+
+          '<td>'+escapeHtml(r.item)+'</td>'+
+          '<td class="amt '+cls+'">'+fmt(r.amount)+'</td>'+
+          '<td class="note-cell hide-sm">'+escapeHtml(r.note||'')+'</td>'+
+          '<td class="op-cell"><button class="edit" data-id="'+r.id+'">✏️</button><button class="del" data-id="'+r.id+'">🗑️</button></td>';
+        tbody.appendChild(tr);
+      });
+      var tr=document.createElement('tr'); tr.className='group-row';
+      tr.innerHTML='<td colspan="2">'+g.cat+' 小计</td><td class="amt">'+fmt(g.sum)+'</td><td class="hide-sm"></td><td></td>';
+      tbody.appendChild(tr);
+    });
+    refreshCatList();
+  }
+  function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]}); }
+
+  // 分类建议列表
+  function refreshCatList(){
+    var all = data.expenses.concat(data.incomes).map(function(r){return r.category});
+    var uniq = {}; all.forEach(function(c){uniq[c]=1});
+    var dl=document.getElementById('catList'); dl.innerHTML='';
+    Object.keys(uniq).forEach(function(c){
+      var o=document.createElement('option'); o.value=c; dl.appendChild(o);
+    });
+  }
+
+  // ---- 切换 ----
+  document.querySelectorAll('.tabs button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.tabs button').forEach(function(b){b.classList.remove('active')});
+      btn.classList.add('active');
+      state.current=btn.dataset.type;
+      document.getElementById('tableTitle').textContent = state.current==='expense' ? '📋 支出明细' : '📋 变现收入';
+      closeForm(); render();
+    });
+  });
+
+  // ---- 表单 ----
+  function openForm(isEdit, rec){
+    document.getElementById('formCard').classList.add('open');
+    document.getElementById('formTitle').textContent = isEdit ? '编辑条目' : '新增条目（'+(state.current==='expense'?'支出':'收入')+'）';
+    document.getElementById('fCat').value = isEdit ? rec.category : '';
+    document.getElementById('fItem').value = isEdit ? rec.item : '';
+    document.getElementById('fAmt').value = isEdit ? rec.amount : '';
+    document.getElementById('fNote').value = isEdit ? (rec.note||'') : '';
+    state.editingId = isEdit ? rec.id : null;
+    document.getElementById('fItem').focus();
+  }
+  function closeForm(){
+    document.getElementById('formCard').classList.remove('open');
+    state.editingId=null;
+  }
+  document.getElementById('btnAdd').addEventListener('click', function(){ openForm(false); });
+  document.getElementById('btnCancel').addEventListener('click', closeForm);
+  document.getElementById('btnSave').addEventListener('click', function(){
+    var cat=document.getElementById('fCat').value.trim();
+    var item=document.getElementById('fItem').value.trim();
+    var amt=parseFloat(document.getElementById('fAmt').value);
+    var note=document.getElementById('fNote').value.trim();
+    if(!item){ toast('请填写项目名称'); return; }
+    if(isNaN(amt)||amt<=0){ toast('请填写正确金额'); return; }
+    if(!cat) cat='其他';
+    var arr = state.current==='expense' ? data.expenses : data.incomes;
+    if(state.editingId){
+      var r=arr.filter(function(x){return x.id===state.editingId})[0];
+      if(r){ r.category=cat; r.item=item; r.amount=amt; r.note=note; }
+      toast('已更新');
+    }else{
+      arr.push({id:genId(), category:cat, item:item, amount:amt, note:note});
+      toast('已新增');
+    }
+    save(data); renderSummary(); render(); closeForm();
+  });
+
+  // 表格内编辑/删除 (事件委托)
+  document.getElementById('tbody').addEventListener('click', function(e){
+    var btn=e.target.closest('button'); if(!btn) return;
+    var id=Number(btn.dataset.id);
+    var arr = state.current==='expense' ? data.expenses : data.incomes;
+    if(btn.classList.contains('del')){
+      if(!confirm('确定删除这一条？')) return;
+      var idx=arr.findIndex(function(x){return x.id===id});
+      if(idx>=0){ arr.splice(idx,1); save(data); renderSummary(); render(); toast('已删除'); }
+    }else if(btn.classList.contains('edit')){
+      var rec=arr.filter(function(x){return x.id===id})[0];
+      if(rec) openForm(true, rec);
+    }
+  });
+
+  // ---- 导出 ----
+  document.getElementById('btnExport').addEventListener('click', function(){
+    var blob=new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;
+    a.download='梦幻西游账本备份_'+new Date().toISOString().slice(0,10)+'.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('已导出备份');
+  });
+
+  // ---- 导入 ----
+  document.getElementById('btnImport').addEventListener('click', function(){ document.getElementById('fileInput').click(); });
+  document.getElementById('fileInput').addEventListener('change', function(e){
+    var f=e.target.files[0]; if(!f) return;
+    var reader=new FileReader();
+    reader.onload=function(ev){
+      try{
+        var obj=JSON.parse(ev.target.result);
+        if(!obj.expenses||!obj.incomes) throw new Error('格式不对');
+        // 补全 id
+        obj.expenses=obj.expenses.map(function(r,i){ if(!r.id)r.id=genId(); return r; });
+        obj.incomes=obj.incomes.map(function(r,i){ if(!r.id)r.id=genId(); return r; });
+        data=obj; save(data); renderSummary(); render();
+        toast('导入成功');
+      }catch(err){ alert('导入失败：'+err.message); }
+    };
+    reader.readAsText(f);
+    e.target.value='';
+  });
+
+  // ---- 重置 ----
+  document.getElementById('btnReset').addEventListener('click', function(){
+    if(!confirm('确定重置？当前所有本地修改将被清除，恢复为初始数据。')) return;
+    data=cloneSeed(); save(data); renderSummary(); render(); toast('已重置');
+  });
+
+  // ---- 初始渲染 ----
+  renderSummary();
+  render();
+})();
+</script>
+</body>
+</html>
