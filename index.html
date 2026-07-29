@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>梦幻西游 · 收支账本</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --bg:#0f1117; --card:#1a1d29; --card2:#222636; --border:#2e3344;
@@ -25,7 +26,6 @@
   }
   header .sub{color:var(--sub);font-size:13px}
 
-  /* 顶部工具条 */
   .topbar{display:flex;justify-content:flex-end;gap:8px;margin-bottom:6px;flex-wrap:wrap}
   .btn{
     background:var(--card); border:1px solid var(--border); color:var(--text);
@@ -39,7 +39,6 @@
   .btn.sm{padding:5px 10px;font-size:12px}
   .btn.warn{color:var(--gold)}
 
-  /* 汇总卡片 */
   .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:18px 0}
   .card{
     background:var(--card); border:1px solid var(--border); border-radius:14px;
@@ -53,7 +52,6 @@
   .card.exp .val{color:var(--exp)} .card.inc .val{color:var(--inc)} .card.net .val{color:var(--gold)}
   .card .val .yuan{font-size:14px;font-weight:400;margin-left:3px;opacity:.7}
 
-  /* 控制栏 */
   .toolbar{display:flex;justify-content:space-between;align-items:center;margin:22px 0 12px;flex-wrap:wrap;gap:10px}
   .toolbar h2{font-size:18px;font-weight:600}
   .tabs{display:flex;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:3px}
@@ -63,7 +61,6 @@
   }
   .tabs button.active{background:var(--accent);color:#fff}
 
-  /* 录入表单 */
   .form-card{
     background:var(--card); border:1px solid var(--border); border-radius:14px;
     padding:16px; margin-bottom:16px; display:none;
@@ -79,7 +76,6 @@
   input:focus,select:focus{outline:none;border-color:var(--accent)}
   .form-actions{display:flex;gap:8px}
 
-  /* 表格 */
   .table-card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden}
   table{width:100%;border-collapse:collapse}
   th,td{padding:12px 14px;text-align:left;font-size:14px;border-bottom:1px solid var(--border)}
@@ -96,8 +92,6 @@
   .op-cell button:hover{background:var(--bg);color:var(--text)}
   .op-cell button.del:hover{color:var(--danger)}
   .op-cell button.edit:hover{color:var(--accent)}
-
-  /* 分组小计行 */
   .group-row td{background:var(--card2);font-weight:600;color:var(--gold)}
 
   footer{text-align:center;color:var(--sub);font-size:12px;margin-top:28px;padding:18px}
@@ -109,6 +103,18 @@
     opacity:0;transition:.3s;pointer-events:none;z-index:99;
   }
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .badge{
+    display:inline-block;font-size:11px;padding:2px 8px;border-radius:6px;margin-left:8px;
+    background:var(--card2);border:1px solid var(--border);color:var(--sub);font-weight:400;
+  }
+  .badge.dirty{background:rgba(245,197,66,.15);border-color:var(--gold);color:var(--gold)}
+  /* 加载遮罩 */
+  .loader{
+    position:fixed;inset:0;background:rgba(15,17,23,.92);display:flex;align-items:center;
+    justify-content:center;flex-direction:column;gap:14px;z-index:200;color:var(--sub);
+  }
+  .spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
   @media(max-width:680px){
     .summary{grid-template-columns:1fr}
     th,td{padding:10px 10px;font-size:13px}
@@ -119,21 +125,26 @@
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="loader" id="loader">
+  <div class="spinner"></div>
+  <div id="loaderMsg">正在读取 now/MHXY.xlsx …</div>
+</div>
+
+<div class="wrap" id="app" style="display:none">
   <header>
     <h1>梦幻西游 · 收支账本</h1>
-    <div class="sub">角色账号 / 点卡 / 召唤兽 / 装备 全部花销与游戏内变现</div>
+    <div class="sub">角色账号 / 点卡 / 召唤兽 / 装备 全部花销与游戏内变现 · 数据源 now/MHXY.xlsx</div>
   </header>
 
   <div class="topbar">
     <button class="btn sm" id="btnAdd">➕ 新增</button>
-    <button class="btn sm" id="btnExport">⬇ 导出备份</button>
-    <button class="btn sm" id="btnImport">⬆ 导入备份</button>
+    <button class="btn sm primary" id="btnExportXlsx">📤 导出 Excel</button>
+    <button class="btn sm" id="btnExport">⬇ 导出JSON</button>
+    <button class="btn sm" id="btnImport">⬆ 导入JSON</button>
     <input type="file" id="fileInput" accept=".json" style="display:none">
-    <button class="btn sm warn" id="btnReset">↺ 重置为初始数据</button>
+    <button class="btn sm warn" id="btnReload">🔄 从 xlsx 重新载入</button>
   </div>
 
-  <!-- 汇总 -->
   <section class="summary">
     <div class="card exp">
       <div class="label">💰 游戏总支出</div>
@@ -149,7 +160,6 @@
     </div>
   </section>
 
-  <!-- 录入表单 -->
   <div class="form-card" id="formCard">
     <h3 id="formTitle">新增条目</h3>
     <div class="form-row">
@@ -177,9 +187,8 @@
     </div>
   </div>
 
-  <!-- 切换 -->
   <div class="toolbar">
-    <h2 id="tableTitle">📋 支出明细</h2>
+    <h2 id="tableTitle">📋 支出明细<span class="badge" id="dirtyBadge" style="display:none">有未导出的修改</span></h2>
     <div class="tabs">
       <button class="active" data-type="expense">支出明细</button>
       <button data-type="income">变现收入</button>
@@ -197,52 +206,127 @@
       <tbody id="tbody"></tbody>
     </table>
   </div>
-  <div class="hint">💾 数据保存在浏览器本地 (localStorage)，清浏览器缓存会丢失，建议定期「导出备份」。</div>
+  <div class="hint">💡 数据源：<code>now/MHXY.xlsx</code>。页面修改保存在本地，点「导出 Excel」生成新 xlsx 覆盖该文件 → 提交推送 → 刷新即生效。</div>
 
-  <footer>
-    数据源自「梦幻西游收支明细.xlsx」 · 静态账本托管于 Gitee Pages
-  </footer>
+  <footer>梦幻西游收支账本 · 静态页面托管于 GitHub Pages</footer>
 </div>
 
 <div class="toast" id="toast"></div>
 
-<script src="data.js"></script>
 <script>
 (function(){
   "use strict";
-  var KEY = 'mh_ledger_v1';
-  var SEED = window.LEDGER_DATA || {expenses:[], incomes:[]};
-  var state = {current:'expense', editingId:null};
+  var XLSX_URL = 'now/MHXY.xlsx';
+  var LS_DATA = 'mh_ledger_data_v2';     // 工作中副本
+  var LS_SIG  = 'mh_ledger_xlsx_sig_v2'; // 上次同步时 xlsx 的数据签名
 
-  // ---- 存储 ----
-  function load(){
-    try{
-      var raw = localStorage.getItem(KEY);
-      if(raw){ return JSON.parse(raw); }
-    }catch(e){}
-    // 首次：用种子数据初始化并给每条加 id
-    var data = cloneSeed();
-    save(data);
-    return data;
-  }
-  function cloneSeed(){
-    var stamp = Date.now();
-    return {
-      expenses: SEED.expenses.map(function(r,i){ return withId(r, stamp+i); }),
-      incomes:  SEED.incomes.map(function(r,i){ return withId(r, stamp+i+10000); })
-    };
-  }
-  function withId(r, id){ return {id:id, category:r.category||'', item:r.item, amount:Number(r.amount)||0, note:r.note||''}; }
-  function save(data){ localStorage.setItem(KEY, JSON.stringify(data)); }
-  var data = load();
+  var data = {expenses:[], incomes:[]};
+  var state = {current:'expense', editingId:null, xlsxSig:''};
 
-  // ---- 工具 ----
+  // ---------- 工具 ----------
   function fmt(n){ return Number(n||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function genId(){ return Date.now()+Math.floor(Math.random()*1000); }
+  function sumAmt(list){ return list.reduce(function(s,r){return s+(Number(r.amount)||0)},0); }
+  function round2(n){ return Math.round((Number(n)||0)*100)/100; }
+  function sig(data){ // 数据签名：用于判断 xlsx 是否被外部更新
+    var c = {e:data.expenses.map(cloneRec), i:data.incomes.map(cloneRec)};
+    return JSON.stringify(c);
+  }
+  function cloneRec(r){ return {category:r.category||'', item:r.item, amount:round2(r.amount), note:r.note||''}; }
   function toast(msg){
     var t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
-    clearTimeout(window.__tt); window.__tt=setTimeout(function(){t.classList.remove('show')},1600);
+    clearTimeout(window.__tt); window.__tt=setTimeout(function(){t.classList.remove('show')},1800);
   }
+  function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]}); }
+
+  // ---------- xlsx 解析（与原 Python 解析逻辑一致） ----------
+  // 过滤关键词：小计/合计/总收入/总支出/净投入
+  function isSkipRow(s1){
+    if(!s1) return false;
+    return /小计|合计|总收入|总支出|净投入/.test(String(s1));
+  }
+  // aoa: 数组的数组；headerIdx 为表头所在行号(0 基)
+  function parseSheet(aoa, headerIdx){
+    var out=[];
+    for(var i=headerIdx+1;i<aoa.length;i++){
+      var row=aoa[i]||[];
+      var c0=row[0], c1=row[1], c2=row[2], c3=row[3];
+      if(c0 && String(c0).indexOf('▌')===0) continue;        // 分组标题行
+      if(isSkipRow(c1)) continue;                            // 小计/合计行
+      if(c1==null || c1==='') continue;                      // 无项目名
+      var amt=Number(c2);
+      if(c2==null || isNaN(amt)) continue;                   // 无金额
+      out.push({category:String(c0||'').trim(), item:String(c1).trim(), amount:round2(amt), note:String(c3||'').trim()});
+    }
+    return out;
+  }
+  function parseWorkbook(wb){
+    var exp=[], inc=[];
+    if(wb.Sheets['支出明细表']){
+      var aoa=XLSX.utils.sheet_to_json(wb.Sheets['支出明细表'],{header:1, raw:true, defval:null});
+      exp=parseSheet(aoa, findHeaderRow(aoa));
+    }
+    if(wb.Sheets['游戏变现收入明细表']){
+      var aoa2=XLSX.utils.sheet_to_json(wb.Sheets['游戏变现收入明细表'],{header:1, raw:true, defval:null});
+      inc=parseSheet(aoa2, findHeaderRow(aoa2));
+    }
+    // 补 id
+    var t=Date.now();
+    exp.forEach(function(r,i){r.id=t+i;});
+    inc.forEach(function(r,i){r.id=t+i+100000;});
+    return {expenses:exp, incomes:inc};
+  }
+  function findHeaderRow(aoa){
+    for(var i=0;i<Math.min(aoa.length,5);i++){
+      var r=aoa[i]||[];
+      if(r[0] && /分类|收入分类/.test(String(r[0]))) return i;
+    }
+    return 1;
+  }
+
+  // ---------- xlsx 导出（重建三表结构，可被本页解析器读回） ----------
+  function buildExpenseAOA(expenses){
+    var aoa=[['梦幻西游 · 支出明细表','','',''],['分类','明细项目','金额 (元)','备注']];
+    var groups=group(expenses);
+    groups.forEach(function(g){
+      aoa.push(['▌'+g.cat,'','','']);
+      g.rows.forEach(function(r){ aoa.push([r.category,r.item,r.amount,r.note||'']); });
+      aoa.push(['', g.cat+' 小计', round2(g.sum), '']);
+    });
+    aoa.push(['', '全部支出合计', round2(sumAmt(expenses)), '所有板块总支出']);
+    return aoa;
+  }
+  function buildIncomeAOA(incomes){
+    var aoa=[['梦幻西游 · 游戏变现收入明细表','','',''],['收入分类','变现项目','金额 (元)','备注']];
+    var groups=group(incomes);
+    groups.forEach(function(g){
+      aoa.push(['▌'+g.cat,'','','']);
+      g.rows.forEach(function(r){ aoa.push([r.category,r.item,r.amount,r.note||'']); });
+      aoa.push(['', g.cat+' 小计', round2(g.sum), '']);
+    });
+    aoa.push(['', '全部变现总收入', round2(sumAmt(incomes)), '所有回款合计']);
+    return aoa;
+  }
+  function buildSummaryAOA(expenses, incomes){
+    var eT=round2(sumAmt(expenses)), iT=round2(sumAmt(incomes));
+    return [
+      ['梦幻西游 · 成本核算汇总表（自动计算）','',''],
+      ['核算项目','金额 (元)','说明'],
+      ['游戏总支出', eT, '全部账号、点卡、宠物、装备花销'],
+      ['减：游戏变现总收入', iT, '卖宠、卖游戏物资全部回款'],
+      ['最新实际净投入', round2(eT-iT), '扣除变现后自付成本']
+    ];
+  }
+  function exportXlsx(){
+    var wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildExpenseAOA(data.expenses)), '支出明细表');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildIncomeAOA(data.incomes)), '游戏变现收入明细表');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildSummaryAOA(data.expenses, data.incomes)), '成本核算汇总表');
+    XLSX.writeFile(wb, 'MHXY.xlsx');
+    toast('已导出 MHXY.xlsx，请用它覆盖 now/MHXY.xlsx 后提交推送');
+  }
+
+  // ---------- 分组 ----------
   function group(list){
     var map={}, order=[];
     list.forEach(function(r){
@@ -253,25 +337,22 @@
     return order.map(function(k){return {cat:k,rows:map[k].rows,sum:map[k].sum};});
   }
 
-  // ---- 汇总 ----
+  // ---------- 渲染 ----------
   function renderSummary(){
     var e=sumAmt(data.expenses), i=sumAmt(data.incomes);
     document.getElementById('tExp').textContent=fmt(e);
     document.getElementById('tInc').textContent=fmt(i);
     document.getElementById('tNet').textContent=fmt(e-i);
   }
-  function sumAmt(list){ return list.reduce(function(s,r){return s+(Number(r.amount)||0)},0); }
-
-  // ---- 表格 ----
   function render(){
     var tbody=document.getElementById('tbody'); tbody.innerHTML='';
     var list = state.current==='expense' ? data.expenses : data.incomes;
     var cls = state.current==='expense' ? 'exp' : 'inc';
-    if(!list.length){ tbody.innerHTML='<tr><td colspan="5" class="empty">暂无数据，点「新增」录入</td></tr>'; return; }
+    if(!list.length){ tbody.innerHTML='<tr><td colspan="5" class="empty">暂无数据，点「新增」录入</td></tr>'; refreshCatList(); return; }
     group(list).forEach(function(g){
       g.rows.forEach(function(r,idx){
         var tr=document.createElement('tr');
-        var catCell = idx===0 ? '<span class="cat-tag">'+g.cat+'</span>' : '';
+        var catCell = idx===0 ? '<span class="cat-tag">'+escapeHtml(g.cat)+'</span>' : '';
         tr.innerHTML =
           '<td>'+catCell+'</td>'+
           '<td>'+escapeHtml(r.item)+'</td>'+
@@ -281,35 +362,88 @@
         tbody.appendChild(tr);
       });
       var tr=document.createElement('tr'); tr.className='group-row';
-      tr.innerHTML='<td colspan="2">'+g.cat+' 小计</td><td class="amt">'+fmt(g.sum)+'</td><td class="hide-sm"></td><td></td>';
+      tr.innerHTML='<td colspan="2">'+escapeHtml(g.cat)+' 小计</td><td class="amt">'+fmt(g.sum)+'</td><td class="hide-sm"></td><td></td>';
       tbody.appendChild(tr);
     });
     refreshCatList();
+    updateDirtyBadge();
   }
-  function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]}); }
-
-  // 分类建议列表
   function refreshCatList(){
     var all = data.expenses.concat(data.incomes).map(function(r){return r.category});
     var uniq = {}; all.forEach(function(c){uniq[c]=1});
     var dl=document.getElementById('catList'); dl.innerHTML='';
-    Object.keys(uniq).forEach(function(c){
-      var o=document.createElement('option'); o.value=c; dl.appendChild(o);
-    });
+    Object.keys(uniq).forEach(function(c){ var o=document.createElement('option'); o.value=c; dl.appendChild(o); });
+  }
+  function updateDirtyBadge(){
+    var stored=localStorage.getItem(LS_DATA);
+    var dirty = stored && JSON.stringify(data)!==localStorage.getItem(LS_SIG.replace(/_sig/,'_baseline'));
+    // 更简单：比较当前 data 与 xlsx 基线
+    var baseline=window.__xlsxBaseline;
+    var isDirty = baseline && (sig(data)!==baseline);
+    var b=document.getElementById('dirtyBadge');
+    if(isDirty){ b.style.display='inline-block'; b.classList.add('dirty'); }
+    else { b.style.display='none'; b.classList.remove('dirty'); }
   }
 
-  // ---- 切换 ----
+  // ---------- 存储 ----------
+  function persist(){
+    localStorage.setItem(LS_DATA, JSON.stringify(data));
+    updateDirtyBadge();
+  }
+
+  // ---------- 加载流程 ----------
+  function showApp(){ document.getElementById('loader').style.display='none'; document.getElementById('app').style.display='block'; }
+  function setLoaderMsg(m){ document.getElementById('loaderMsg').textContent=m; }
+
+  function load(){
+    fetch(XLSX_URL, {cache:'no-store'})
+      .then(function(res){
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        return res.arrayBuffer();
+      })
+      .then(function(buf){
+        var wb=XLSX.read(new Uint8Array(buf), {type:'array'});
+        var xlsxData=parseWorkbook(wb);
+        var xlsxSigStr=sig(xlsxData);
+        window.__xlsxBaseline=xlsxSigStr;
+        state.xlsxSig=xlsxSigStr;
+
+        var storedSig=localStorage.getItem(LS_SIG);
+        var storedData=localStorage.getItem(LS_DATA);
+        // 若 xlsx 未变 且 有本地副本 → 恢复本地编辑；否则用 xlsx 数据
+        if(storedSig && storedData && storedSig===xlsxSigStr){
+          try{ data=JSON.parse(storedData); }
+          catch(e){ data=xlsxData; }
+        }else{
+          data=xlsxData;
+          localStorage.setItem(LS_DATA, JSON.stringify(data));
+          localStorage.setItem(LS_SIG, xlsxSigStr);
+        }
+        renderSummary(); render(); showApp();
+      })
+      .catch(function(err){
+        setLoaderMsg('读取 xlsx 失败：'+err.message+'。尝试加载本地副本…');
+        var storedData=localStorage.getItem(LS_DATA);
+        if(storedData){
+          try{ data=JSON.parse(storedData); window.__xlsxBaseline=null; renderSummary(); render(); showApp(); toast('已加载本地副本(在线 xlsx 不可用)'); return; }
+          catch(e){}
+        }
+        setLoaderMsg('无法加载数据。请确保 now/MHXY.xlsx 存在。');
+      });
+  }
+
+  // ---------- 切换 ----------
   document.querySelectorAll('.tabs button').forEach(function(btn){
     btn.addEventListener('click', function(){
       document.querySelectorAll('.tabs button').forEach(function(b){b.classList.remove('active')});
       btn.classList.add('active');
       state.current=btn.dataset.type;
-      document.getElementById('tableTitle').textContent = state.current==='expense' ? '📋 支出明细' : '📋 变现收入';
+      document.getElementById('tableTitle').firstChild.textContent = state.current==='expense' ? '📋 支出明细' : '📋 变现收入';
       closeForm(); render();
     });
   });
 
-  // ---- 表单 ----
+  // ---------- 表单 ----------
   function openForm(isEdit, rec){
     document.getElementById('formCard').classList.add('open');
     document.getElementById('formTitle').textContent = isEdit ? '编辑条目' : '新增条目（'+(state.current==='expense'?'支出':'收入')+'）';
@@ -320,10 +454,7 @@
     state.editingId = isEdit ? rec.id : null;
     document.getElementById('fItem').focus();
   }
-  function closeForm(){
-    document.getElementById('formCard').classList.remove('open');
-    state.editingId=null;
-  }
+  function closeForm(){ document.getElementById('formCard').classList.remove('open'); state.editingId=null; }
   document.getElementById('btnAdd').addEventListener('click', function(){ openForm(false); });
   document.getElementById('btnCancel').addEventListener('click', closeForm);
   document.getElementById('btnSave').addEventListener('click', function(){
@@ -337,16 +468,15 @@
     var arr = state.current==='expense' ? data.expenses : data.incomes;
     if(state.editingId){
       var r=arr.filter(function(x){return x.id===state.editingId})[0];
-      if(r){ r.category=cat; r.item=item; r.amount=amt; r.note=note; }
+      if(r){ r.category=cat; r.item=item; r.amount=round2(amt); r.note=note; }
       toast('已更新');
     }else{
-      arr.push({id:genId(), category:cat, item:item, amount:amt, note:note});
+      arr.push({id:genId(), category:cat, item:item, amount:round2(amt), note:note});
       toast('已新增');
     }
-    save(data); renderSummary(); render(); closeForm();
+    persist(); renderSummary(); render(); closeForm();
   });
 
-  // 表格内编辑/删除 (事件委托)
   document.getElementById('tbody').addEventListener('click', function(e){
     var btn=e.target.closest('button'); if(!btn) return;
     var id=Number(btn.dataset.id);
@@ -354,26 +484,25 @@
     if(btn.classList.contains('del')){
       if(!confirm('确定删除这一条？')) return;
       var idx=arr.findIndex(function(x){return x.id===id});
-      if(idx>=0){ arr.splice(idx,1); save(data); renderSummary(); render(); toast('已删除'); }
+      if(idx>=0){ arr.splice(idx,1); persist(); renderSummary(); render(); toast('已删除'); }
     }else if(btn.classList.contains('edit')){
       var rec=arr.filter(function(x){return x.id===id})[0];
       if(rec) openForm(true, rec);
     }
   });
 
-  // ---- 导出 ----
+  // ---------- 导出 ----------
+  document.getElementById('btnExportXlsx').addEventListener('click', exportXlsx);
   document.getElementById('btnExport').addEventListener('click', function(){
     var blob=new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
     var url=URL.createObjectURL(blob);
     var a=document.createElement('a');
-    a.href=url;
-    a.download='梦幻西游账本备份_'+new Date().toISOString().slice(0,10)+'.json';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast('已导出备份');
+    a.href=url; a.download='梦幻西游账本备份_'+new Date().toISOString().slice(0,10)+'.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    toast('已导出 JSON 备份');
   });
 
-  // ---- 导入 ----
+  // ---------- 导入 JSON ----------
   document.getElementById('btnImport').addEventListener('click', function(){ document.getElementById('fileInput').click(); });
   document.getElementById('fileInput').addEventListener('change', function(e){
     var f=e.target.files[0]; if(!f) return;
@@ -382,26 +511,35 @@
       try{
         var obj=JSON.parse(ev.target.result);
         if(!obj.expenses||!obj.incomes) throw new Error('格式不对');
-        // 补全 id
-        obj.expenses=obj.expenses.map(function(r,i){ if(!r.id)r.id=genId(); return r; });
-        obj.incomes=obj.incomes.map(function(r,i){ if(!r.id)r.id=genId(); return r; });
-        data=obj; save(data); renderSummary(); render();
-        toast('导入成功');
+        obj.expenses=obj.expenses.map(function(r){ if(!r.id)r.id=genId(); r.amount=round2(r.amount); return r; });
+        obj.incomes=obj.incomes.map(function(r){ if(!r.id)r.id=genId(); r.amount=round2(r.amount); return r; });
+        data=obj; persist(); renderSummary(); render(); toast('导入成功');
       }catch(err){ alert('导入失败：'+err.message); }
     };
-    reader.readAsText(f);
-    e.target.value='';
+    reader.readAsText(f); e.target.value='';
   });
 
-  // ---- 重置 ----
-  document.getElementById('btnReset').addEventListener('click', function(){
-    if(!confirm('确定重置？当前所有本地修改将被清除，恢复为初始数据。')) return;
-    data=cloneSeed(); save(data); renderSummary(); render(); toast('已重置');
+  // ---------- 从 xlsx 重新载入（强制用 xlsx 数据，丢弃本地修改） ----------
+  document.getElementById('btnReload').addEventListener('click', function(){
+    if(!confirm('确定从 now/MHXY.xlsx 重新载入？本地未导出的修改将被丢弃。')) return;
+    setLoaderMsg('正在重新读取 now/MHXY.xlsx …');
+    document.getElementById('loader').style.display='flex';
+    document.getElementById('app').style.display='none';
+    fetch(XLSX_URL,{cache:'no-store'})
+      .then(function(res){return res.arrayBuffer();})
+      .then(function(buf){
+        var wb=XLSX.read(new Uint8Array(buf),{type:'array'});
+        data=parseWorkbook(wb);
+        var s=sig(data); window.__xlsxBaseline=s; state.xlsxSig=s;
+        localStorage.setItem(LS_DATA, JSON.stringify(data));
+        localStorage.setItem(LS_SIG, s);
+        renderSummary(); render(); showApp(); toast('已从 xlsx 重新载入');
+      })
+      .catch(function(err){ alert('读取失败：'+err.message); showApp(); });
   });
 
-  // ---- 初始渲染 ----
-  renderSummary();
-  render();
+  // ---------- 启动 ----------
+  load();
 })();
 </script>
 </body>
