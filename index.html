@@ -133,7 +133,7 @@
 <div class="wrap" id="app" style="display:none">
   <header>
     <h1>梦幻西游 · 收支账本</h1>
-    <div class="sub">角色账号 / 点卡 / 召唤兽 / 装备 全部花销与游戏内变现 · 数据源 now/MHXY.xlsx</div>
+    <div class="sub">当前新号账期 · 角色 / 点卡 / 召唤兽 / 装备 · 旧号已归档为坏账 · 数据源 now/MHXY.xlsx</div>
   </header>
 
   <div class="topbar">
@@ -222,6 +222,8 @@
 
   var data = {expenses:[], incomes:[]};
   var state = {current:'expense', editingId:null, xlsxSig:''};
+  var ARCHIVE_SHEET = '历史坏账归档';
+  var archiveAoa = null; // 归档表 AOA，导出时原样写回，避免被冲掉
 
   // ---------- 工具 ----------
   function fmt(n){ return Number(n||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -270,6 +272,12 @@
       var aoa2=XLSX.utils.sheet_to_json(wb.Sheets['游戏变现收入明细表'],{header:1, raw:true, defval:null});
       inc=parseSheet(aoa2, findHeaderRow(aoa2));
     }
+    // 归档表不参与汇总，仅缓存以便导出时保留
+    if(wb.Sheets[ARCHIVE_SHEET]){
+      archiveAoa=XLSX.utils.sheet_to_json(wb.Sheets[ARCHIVE_SHEET],{header:1, raw:true, defval:null});
+    }else{
+      archiveAoa=null;
+    }
     // 补 id
     var t=Date.now();
     exp.forEach(function(r,i){r.id=t+i;});
@@ -310,11 +318,11 @@
   function buildSummaryAOA(expenses, incomes){
     var eT=round2(sumAmt(expenses)), iT=round2(sumAmt(incomes));
     return [
-      ['梦幻西游 · 成本核算汇总表（自动计算）','',''],
+      ['梦幻西游 · 成本核算汇总表（当前新号账期 · 自动计算）','',''],
       ['核算项目','金额 (元)','说明'],
-      ['游戏总支出', eT, '全部账号、点卡、宠物、装备花销'],
-      ['减：游戏变现总收入', iT, '卖宠、卖游戏物资全部回款'],
-      ['最新实际净投入', round2(eT-iT), '扣除变现后自付成本']
+      ['游戏总支出', eT, '当前新号：账号（含装宠）、点卡、后续采购'],
+      ['减：游戏变现总收入', iT, '新号变现 + 旧号后续回笼'],
+      ['最新实际净投入', round2(eT-iT), '当前账期自付成本（不含历史坏账）']
     ];
   }
   function exportXlsx(){
@@ -322,6 +330,9 @@
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildExpenseAOA(data.expenses)), '支出明细表');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildIncomeAOA(data.incomes)), '游戏变现收入明细表');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildSummaryAOA(data.expenses, data.incomes)), '成本核算汇总表');
+    if(archiveAoa && archiveAoa.length){
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(archiveAoa), ARCHIVE_SHEET);
+    }
     XLSX.writeFile(wb, 'MHXY.xlsx');
     toast('已导出 MHXY.xlsx，请用它覆盖 now/MHXY.xlsx 后提交推送');
   }
